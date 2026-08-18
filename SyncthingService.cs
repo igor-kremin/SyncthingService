@@ -16,6 +16,8 @@ class SyncthingService : ServiceBase
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Syncthing", "config.xml");
 
     private Process proc;
+    private bool stopping;
+    private bool restarting;
     private System.Threading.Timer watchdog;
 
     static void Main(string[] args)
@@ -183,41 +185,51 @@ class SyncthingService : ServiceBase
         {
             if (!File.Exists(SyncthingExe))
                 throw new FileNotFoundException("syncthing.exe not found: " + SyncthingExe);
-            string extraArgs = ReadSavedArgs();
-            string scArgs = string.Join(" ", Array.ConvertAll(args, a => a.Contains(" ") ? "\"" + a + "\"" : a));
-            if (scArgs.Length > 0) extraArgs = (extraArgs.Length > 0 ? extraArgs + " " : "") + scArgs;
-            string scmHome = ExtractHomeArg(scArgs);
-            if (scmHome != null)
-            {
-                try { File.WriteAllText(HomeFile, scmHome.Trim()); } catch { }
-            }
-            if (!extraArgs.Contains("--no-restart"))
-                extraArgs = extraArgs.Length > 0 ? "--no-restart " + extraArgs : "--no-restart";
-            string home = ReadHomeDir();
-            if (home.Length > 0 && !extraArgs.Contains("--home") && !extraArgs.Contains("--config") && !extraArgs.Contains("--data"))
-                extraArgs += " --home=\"" + home + "\"";
+            string extraArgs = BuildArgs(args);
             Log("=== Syncthing service starting ===");
             Log("Syncthing args: " + extraArgs);
-            var psi = new ProcessStartInfo
-            {
-                FileName = SyncthingExe,
-                Arguments = extraArgs,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = BaseDir
-            };
-            psi.EnvironmentVariables["STNOUPGRADE"] = "1";
-            proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            proc.Exited += (s, e) => Log("Syncthing process exited, code " + proc.ExitCode);
-            proc.Start();
-            Log("Syncthing started, PID " + proc.Id);
-            watchdog = new System.Threading.Timer(_ => WatchdogTick(), null, 30000, 30000);
+            StartSyncthing(extraArgs);
+            watchdog = new System.Threading.Timer(_ => WatchdogTick(), null, 5000, 5000);
         }
         catch (Exception ex)
         {
             Log("Failed to start: " + ex.Message);
             throw;
         }
+    }
+
+    private string BuildArgs(string[] args)
+    {
+        string extraArgs = ReadSavedArgs();
+        string scArgs = string.Join(" ", Array.ConvertAll(args, a => a.Contains(" ") ? "\"" + a + "\"" : a));
+        if (scArgs.Length > 0) extraArgs = (extraArgs.Length > 0 ? extraArgs + " " : "") + scArgs;
+        string scmHome = ExtractHomeArg(scArgs);
+        if (scmHome != null)
+        {
+            try { File.WriteAllText(HomeFile, scmHome.Trim()); } catch { }
+        }
+        if (!extraArgs.Contains("--no-restart"))
+            extraArgs = extraArgs.Length > 0 ? "--no-restart " + extraArgs : "--no-restart";
+        string home = ReadHomeDir();
+        if (home.Length > 0 && !extraArgs.Contains("--home") && !extraArgs.Contains("--config") && !extraArgs.Contains("--data"))
+            extraArgs += " --home=\"" + home + "\"";
+        return extraArgs;
+    }
+
+    private void StartSyncthing(string extraArgs)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = SyncthingExe,
+            Arguments = extraArgs,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = BaseDir
+        };
+        proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        proc.Exited += (s, e) => Log("Syncthing process exited, code " + proc.ExitCode);
+        proc.Start();
+        Log("Syncthing started, PID " + proc.Id);
     }
 
     private static string ReadSavedArgs()
@@ -276,17 +288,58 @@ class SyncthingService : ServiceBase
     {
         try
         {
-            if (proc != null && proc.HasExited)
+            if (proc != null && proc.HasExited && !stopping && !restarting)
             {
-                Log("Syncthing is not running anymore, stopping the service");
-                Stop();
+                if (proc.ExitCode == 0)
+                {
+                    Log("Syncthing exited cleanly (likely self-upgrade), restarting");
+                    RestartSyncthing();
+                }
+                else
+                {
+                    Log("Syncthing exited with code " + proc.ExitCode + ", stopping the service");
+                    Stop();
+                }
             }
         }
         catch { }
     }
 
+    private void RestartSyncthing()
+    {
+        restarting = true;
+        try
+        {
+            System.Threading.Thread.Sleep(5000);
+            try
+            {
+                var psi = new ProcessStartInfo("taskkill.exe", "/IM syncthing.exe /F")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using (var k = Process.Start(psi))
+                    k.WaitForExit(10000);
+                Log("Old/orphan Syncthing processes terminated");
+            }
+            catch (Exception ex) { Log("Failed to kill orphan processes: " + ex.Message); }
+            string extraArgs = BuildArgs(new string[0]);
+            Log("Restarting Syncthing, args: " + extraArgs);
+            StartSyncthing(extraArgs);
+        }
+        catch (Exception ex)
+        {
+            Log("Restart failed: " + ex.Message);
+        }
+        finally
+        {
+            restarting = false;
+        }
+    }
+
     protected override void OnStop()
     {
+        stopping = true;
         Log("=== Syncthing service stopping ===");
         if (watchdog != null) watchdog.Dispose();
         if (proc != null && !proc.HasExited)

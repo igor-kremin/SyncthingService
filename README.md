@@ -13,7 +13,7 @@ and a graceful shutdown.
   (`POST /rest/system/shutdown`), waits up to 20 s, and only falls back to `taskkill /F`
 - Extra command-line parameters can be passed to `syncthing.exe` (one-off or permanent)
 - Watchdog: if Syncthing dies, the service stops itself
-- Self-upgrade is disabled (`STNOUPGRADE=1`) — update Syncthing manually (see below)
+- Syncthing can self-upgrade: the wrapper detects the clean exit, kills the orphan process left by Syncthing's upgrade helper and starts the updated binary under service control
 - Pure .NET Framework 4.x — no external dependencies, no installers, compiles with the `csc.exe`
   that ships with Windows
 
@@ -119,15 +119,17 @@ Example events:
 
 ## Updating Syncthing
 
-The wrapper disables Syncthing's self-upgrade (`STNOUPGRADE=1`). Reason: after a self-upgrade
-Syncthing spawns the new process itself (via its "upgrade" helper), outside of the service —
-the wrapper would lose control over it and the service would stop.
+Syncthing can self-upgrade (default interval: 12 h, or via the GUI button). The upgrade flow:
 
-Update manually:
+1. Syncthing downloads the new version and starts its "upgrade" helper, then exits cleanly (code 0).
+2. The helper replaces `syncthing.exe` and starts the new process on its own (as an orphan).
+3. The wrapper sees the clean exit, waits 5 s, kills the orphan process, and starts the updated
+   `syncthing.exe` under service control again.
+
+Manual update still works:
 
 1. `SyncthingService.exe stop`
-2. Replace `syncthing.exe` with the new version (download from
-   [syncthing.net](https://syncthing.net/) / GitHub releases)
+2. Replace `syncthing.exe` with the new version
 3. `SyncthingService.exe start`
 
 ## How it works
