@@ -397,11 +397,26 @@ class SyncthingService : ServiceBase
         if (proc != null) proc.WaitForExit();
     }
 
+    private static bool eventSourceReady;
+    private static readonly object eventLock = new object();
+
     private void Log(string line)
     {
         if (line == null) return;
         try
         {
+            if (!eventSourceReady)
+            {
+                lock (eventLock)
+                {
+                    if (!eventSourceReady)
+                    {
+                        if (!EventLog.SourceExists("SyncthingService"))
+                            EventLog.CreateEventSource("SyncthingService", "Application");
+                        eventSourceReady = true;
+                    }
+                }
+            }
             EventLog.WriteEntry("SyncthingService", line);
         }
         catch { }
