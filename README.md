@@ -95,7 +95,9 @@ SyncthingService.exe params          # clear them
 
 Notes:
 
-- `--no-restart` is always added automatically (unless you already passed it), so the service
+- --home given to install is written into the service binPath (visible in services.msc
+  → Properties → "Path to executable") and mirrored to syncthing-home.txt on each start.
+- --no-restart is always added automatically (unless you already passed it), so the service
   has full control over the process lifecycle.
 - The Windows SCM remembers the arguments of the last `sc start` and replays them on later
   starts even if you don't pass any. Use `params` for settings you want to keep.

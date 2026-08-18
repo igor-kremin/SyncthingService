@@ -84,6 +84,8 @@ class SyncthingService : ServiceBase
                 homeArg = args[++i];
         }
         string bin = "\"" + "\"" + exe + "\"" + "\"";
+        if (homeArg != null)
+            bin += " --home=\"" + homeArg + "\"";
         Sc("create " + SvcName + " binPath= " + bin + " start= auto DisplayName= \"Syncthing (service wrapper)\"");
         Sc("description " + SvcName + " \"Syncthing run as a Windows service\"");
         Sc("failure " + SvcName + " reset= 86400 actions= restart/5000/restart/10000/restart/30000");
@@ -184,6 +186,11 @@ class SyncthingService : ServiceBase
             string extraArgs = ReadSavedArgs();
             string scArgs = string.Join(" ", Array.ConvertAll(args, a => a.Contains(" ") ? "\"" + a + "\"" : a));
             if (scArgs.Length > 0) extraArgs = (extraArgs.Length > 0 ? extraArgs + " " : "") + scArgs;
+            string scmHome = ExtractHomeArg(scArgs);
+            if (scmHome != null)
+            {
+                try { File.WriteAllText(HomeFile, scmHome.Trim()); } catch { }
+            }
             if (!extraArgs.Contains("--no-restart"))
                 extraArgs = extraArgs.Length > 0 ? "--no-restart " + extraArgs : "--no-restart";
             string home = ReadHomeDir();
@@ -239,6 +246,36 @@ class SyncthingService : ServiceBase
         }
         catch { }
         return "";
+    }
+
+    private static string ExtractHomeArg(string line)
+    {
+        if (line == null) return null;
+        int idx = line.IndexOf("--home=", StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+        {
+            string rest = line.Substring(idx + "--home=".Length).Trim();
+            if (rest.Length > 0 && (rest[0] == '"' || rest[0] == '\''))
+            {
+                int end = rest.IndexOf(rest[0], 1);
+                if (end >= 0) return rest.Substring(1, end - 1);
+            }
+            int sp = rest.IndexOf(' ');
+            return sp >= 0 ? rest.Substring(0, sp) : rest;
+        }
+        idx = line.IndexOf("--home ", StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+        {
+            string rest = line.Substring(idx + "--home ".Length).Trim();
+            if (rest.Length > 0 && rest[0] == '"')
+            {
+                int end = rest.IndexOf('"', 1);
+                if (end >= 0) return rest.Substring(1, end - 1);
+            }
+            int sp = rest.IndexOf(' ');
+            return sp >= 0 ? rest.Substring(0, sp) : rest;
+        }
+        return null;
     }
 
     private void WatchdogTick()
