@@ -84,10 +84,15 @@ class SyncthingService : ServiceBase
             else if (args[i] == "--home" && i + 1 < args.Length)
                 homeArg = args[++i];
         }
-        string bin = "\"" + "\"" + exe + "\"" + "\"";
+        string binValue = "\"" + exe + "\"";
         if (homeArg != null)
-            bin += " --home=\"" + homeArg + "\"";
-        Sc("create " + SvcName + " binPath= " + bin + " start= auto DisplayName= \"Syncthing (service wrapper)\"");
+            binValue += " --home=\"" + homeArg + "\"";
+        string bin = "\"" + binValue.Replace("\"", "\\\"") + "\"";
+        if (Sc("create " + SvcName + " binPath= " + bin + " start= auto DisplayName= \"Syncthing (service wrapper)\"") != 0)
+        {
+            Console.WriteLine("ERROR: failed to create the service. Run this command from an elevated (Administrator) terminal.");
+            return;
+        }
         Sc("description " + SvcName + " \"Syncthing run as a Windows service\"");
         Sc("failure " + SvcName + " reset= 86400 actions= restart/5000/restart/10000/restart/30000");
         if (homeArg != null)
@@ -162,7 +167,7 @@ class SyncthingService : ServiceBase
             Console.WriteLine("Config dir not set. Set it with: home <path>");
     }
 
-    static void Sc(string command)
+    static int Sc(string command)
     {
         var psi = new ProcessStartInfo("sc.exe", command)
         {
@@ -176,6 +181,7 @@ class SyncthingService : ServiceBase
             Console.Write(p.StandardOutput.ReadToEnd());
             Console.Write(p.StandardError.ReadToEnd());
             p.WaitForExit();
+            return p.ExitCode;
         }
     }
 
