@@ -187,7 +187,7 @@ class SyncthingService : ServiceBase
             if (!extraArgs.Contains("--no-restart"))
                 extraArgs = extraArgs.Length > 0 ? "--no-restart " + extraArgs : "--no-restart";
             string home = ReadHomeDir();
-            if (home.Length > 0 && !extraArgs.Contains("--home"))
+            if (home.Length > 0 && !extraArgs.Contains("--home") && !extraArgs.Contains("--config") && !extraArgs.Contains("--data"))
                 extraArgs += " --home=\"" + home + "\"";
             Log("=== Syncthing service starting ===");
             Log("Syncthing args: " + extraArgs);
