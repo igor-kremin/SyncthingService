@@ -10,13 +10,11 @@ class SyncthingService : ServiceBase
     private const string SvcName = "Syncthing";
     private static readonly string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
     private static readonly string SyncthingExe = Path.Combine(BaseDir, "syncthing.exe");
-    private static readonly string LogPath = Path.Combine(BaseDir, "syncthing.log");
     private static readonly string ArgsFile = Path.Combine(BaseDir, "syncthing-args.txt");
     private static readonly string HomeFile = Path.Combine(BaseDir, "syncthing-home.txt");
     private static readonly string ConfigFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Syncthing", "config.xml");
 
-    private readonly object logLock = new object();
     private Process proc;
     private System.Threading.Timer watchdog;
 
@@ -35,6 +33,7 @@ class SyncthingService : ServiceBase
             case "uninstall":
                 Sc("stop " + SvcName);
                 Sc("delete " + SvcName);
+                try { EventLog.DeleteEventSource("SyncthingService"); } catch { }
                 break;
             case "start":
                 StartService(args);
@@ -108,6 +107,7 @@ class SyncthingService : ServiceBase
                 Console.WriteLine("Note: config.xml not found in " + candidate + ". Set it later with: " + exe + " home <path>");
             }
         }
+        try { if (!EventLog.SourceExists("SyncthingService")) EventLog.CreateEventSource("SyncthingService", "Application"); } catch { }
         Console.WriteLine("Service '" + SvcName + "' installed.");
         Console.WriteLine("Start it with: " + exe + " start");
     }
@@ -204,18 +204,12 @@ class SyncthingService : ServiceBase
                 Arguments = extraArgs,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                WorkingDirectory = BaseDir,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
+                WorkingDirectory = BaseDir
             };
             psi.EnvironmentVariables["STNOUPGRADE"] = "1";
             proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            proc.OutputDataReceived += (s, e) => { if (e.Data != null) Log(e.Data); };
-            proc.ErrorDataReceived += (s, e) => { if (e.Data != null) Log(e.Data); };
             proc.Exited += (s, e) => Log("Syncthing process exited, code " + proc.ExitCode);
             proc.Start();
-            proc.BeginOutputReadLine();
-            proc.BeginErrorReadLine();
             Log("Syncthing started, PID " + proc.Id);
             watchdog = new System.Threading.Timer(_ => WatchdogTick(), null, 30000, 30000);
         }
@@ -406,15 +400,10 @@ class SyncthingService : ServiceBase
     private void Log(string line)
     {
         if (line == null) return;
-        lock (logLock)
+        try
         {
-            try
-            {
-                using (var fs = new FileStream(LogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
-                using (var w = new StreamWriter(fs))
-                    w.WriteLine(line);
-            }
-            catch { }
+            EventLog.WriteEntry("SyncthingService", line);
         }
+        catch { }
     }
 }

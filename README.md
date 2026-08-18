@@ -8,7 +8,7 @@ and a graceful shutdown.
 
 - Runs `syncthing.exe` as a Windows service (`Syncthing`)
 - Service auto-start on boot + automatic restart if Syncthing crashes (`sc failure`)
-- Captures Syncthing console output into `syncthing.log` (next to the wrapper), plus service lifecycle events
+- Service lifecycle events go to the Windows Event Log (source `SyncthingService`); Syncthing keeps its own log in its config directory
 - Graceful shutdown: on stop, the wrapper asks Syncthing to shut down via its REST API
   (`POST /rest/system/shutdown`), waits up to 20 s, and only falls back to `taskkill /F`
 - Extra command-line parameters can be passed to `syncthing.exe` (one-off or permanent)
@@ -31,7 +31,6 @@ and a graceful shutdown.
    C:\Syncthing\
    ├── syncthing.exe
    ├── SyncthingService.exe
-   ├── syncthing.log      (created automatically)
    ├── syncthing-args.txt (created only if you use `params`)
    └── syncthing-home.txt (created during install; config dir for LocalSystem)
    ```
@@ -105,18 +104,18 @@ Notes:
 
 ## Logging
 
-All output goes to `syncthing.log` next to the wrapper:
+Syncthing writes its own log into its config directory (`syncthing.log` there) — check it for
+transfer and connection details. The wrapper only logs service lifecycle events
+(start/stop/args/errors) to the **Windows Event Log** under source `SyncthingService`
+(Event Viewer → Windows Logs → Application).
 
-```
-=== Syncthing service starting ===
-Syncthing args: --no-restart
-2026-08-18 12:39:20 INF syncthing v2.1.3 "Hafnium Hornet" (go1.26.5 windows-amd64) ...
-Syncthing started, PID 65236
-=== Syncthing service stopping ===
-Graceful shutdown requested via REST API
-Syncthing exited gracefully
-=== Syncthing service stopped ===
-```
+Example events:
+
+- `Syncthing service starting`
+- `Syncthing args: --no-restart --home="C:\Users\...\Syncthing"`
+- `Syncthing started, PID 1234`
+- `Graceful shutdown requested via REST API`
+- `Syncthing exited gracefully`
 
 ## Updating Syncthing
 
@@ -135,8 +134,8 @@ Update manually:
 
 - The wrapper is a real Windows service (written in C#, `ServiceBase`). The service manager
   (`sc.exe`) starts/stops it like any native service.
-- On start it spawns `syncthing.exe` as a child process with redirected output, which is
-  written to `syncthing.log`.
+- On start it spawns `syncthing.exe` as a child process and logs service lifecycle events
+  to the Windows Event Log.
 - On stop it reads the GUI address and API key from Syncthing's `config.xml`
   (`%LOCALAPPDATA%\Syncthing\config.xml`) and posts `/rest/system/shutdown` — the same
   graceful shutdown you get with Ctrl+C. If Syncthing doesn't exit within 20 seconds,
