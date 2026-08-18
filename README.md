@@ -32,7 +32,8 @@ and a graceful shutdown.
    ├── syncthing.exe
    ├── SyncthingService.exe
    ├── syncthing.log      (created automatically)
-   └── syncthing-args.txt (created only if you use `params`)
+   ├── syncthing-args.txt (created only if you use `params`)
+   └── syncthing-home.txt (created during install; config dir for LocalSystem)
    ```
 
 3. Open a terminal **as Administrator** and install the service:
@@ -70,6 +71,10 @@ SyncthingService.exe stop              Stop the service
 SyncthingService.exe status            Show service state
 SyncthingService.exe params [args...]  Save permanent extra args for syncthing.exe
                                        (no args = clear); stored in syncthing-args.txt
+SyncthingService.exe home [path]       Show/set the Syncthing config dir (--home); stored in
+                                       syncthing-home.txt. Set automatically during install —
+                                       the service runs as LocalSystem, which would otherwise
+                                       use a fresh empty config in the system profile
 SyncthingService.exe run               Run in console for testing (no service)
 ```
 
@@ -140,6 +145,10 @@ Update manually:
 
 - **`Failed to acquire lock: is another Syncthing instance already running?`**
   Stop the manually running instance first — only one Syncthing can use the same config.
+- **"Folder Unshared" / empty config in the GUI** — the service runs as `LocalSystem`, which
+  looks for the config in the *system* profile and starts with a fresh empty config. `install`
+  saves your real config dir into `syncthing-home.txt` automatically. If it's missing or wrong,
+  fix it with `SyncthingService.exe home C:\path\to\Syncthing`, then restart the service.
 - **Access denied when running `install` / `uninstall`** — run the command from an elevated
   (Administrator) terminal.
 - **Syncthing can't reach network shares** — the service runs as `LocalSystem` by default.

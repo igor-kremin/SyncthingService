@@ -1,6 +1,7 @@
 # Logs
 *.log
 syncthing-args.txt
+syncthing-home.txt
 
 # Syncthing binary (self-updating; download fresh from syncthing.net)
 syncthing.exe
