@@ -30,9 +30,7 @@ and a graceful shutdown.
    ```
    C:\Syncthing\
    ├── syncthing.exe
-   ├── SyncthingService.exe
-   ├── syncthing-args.txt (created only if you use `params`)
-   └── syncthing-home.txt (created during install; config dir for LocalSystem)
+   └── SyncthingService.exe
    ```
 
 3. Open a terminal **as Administrator** and install the service:
@@ -69,11 +67,12 @@ SyncthingService.exe start [params...] Start the service; extra params are passe
 SyncthingService.exe stop              Stop the service
 SyncthingService.exe status            Show service state
 SyncthingService.exe params [args...]  Save permanent extra args for syncthing.exe
-                                       (no args = clear); stored in syncthing-args.txt
-SyncthingService.exe home [path]       Show/set the Syncthing config dir (--home); stored in
-                                       syncthing-home.txt. Set automatically during install —
-                                       the service runs as LocalSystem, which would otherwise
-                                       use a fresh empty config in the system profile
+                                       (no args = clear); stored in the service registry
+                                       (HKLM\SYSTEM\CurrentControlSet\Services\Syncthing\Parameters)
+SyncthingService.exe home [path]       Show/set the Syncthing config dir (--home); stored in the
+                                       service registry. Set automatically during install — the
+                                       service runs as LocalSystem, which would otherwise use a
+                                       fresh empty config in the system profile
 SyncthingService.exe run               Run in console for testing (no service)
 ```
 
@@ -95,7 +94,7 @@ SyncthingService.exe params          # clear them
 Notes:
 
 - --home given to install is written into the service binPath (visible in services.msc
-  → Properties → "Path to executable") and mirrored to syncthing-home.txt on each start.
+  → Properties → "Path to executable") and mirrored to the service registry on each start.
 - --no-restart is always added automatically (unless you already passed it), so the service
   has full control over the process lifecycle.
 - The Windows SCM remembers the arguments of the last `sc start` and replays them on later
@@ -150,7 +149,7 @@ Manual update still works:
   Stop the manually running instance first — only one Syncthing can use the same config.
 - **"Folder Unshared" / empty config in the GUI** — the service runs as `LocalSystem`, which
   looks for the config in the *system* profile and starts with a fresh empty config. `install`
-  saves your real config dir into `syncthing-home.txt` automatically. If it's missing or wrong,
+  saves your real config dir into the service registry automatically. If it's missing or wrong,
   fix it with `SyncthingService.exe home C:\path\to\Syncthing`, then restart the service.
 - **Access denied when running `install` / `uninstall`** — run the command from an elevated
   (Administrator) terminal.

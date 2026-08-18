@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using Microsoft.Win32;
 using System.IO;
 using System.Net;
 using System.ServiceProcess;
@@ -8,12 +9,40 @@ using System.Xml;
 class SyncthingService : ServiceBase
 {
     private const string SvcName = "Syncthing";
+    private static readonly string RegParams = @"SYSTEM\CurrentControlSet\Services\" + SvcName + @"\Parameters";
     private static readonly string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
     private static readonly string SyncthingExe = Path.Combine(BaseDir, "syncthing.exe");
-    private static readonly string ArgsFile = Path.Combine(BaseDir, "syncthing-args.txt");
-    private static readonly string HomeFile = Path.Combine(BaseDir, "syncthing-home.txt");
     private static readonly string ConfigFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Syncthing", "config.xml");
+
+    static string RegGet(string name)
+    {
+        try
+        {
+            using (var key = Registry.LocalMachine.OpenSubKey(RegParams))
+            {
+                if (key == null) return "";
+                return key.GetValue(name, "") as string ?? "";
+            }
+        }
+        catch { return ""; }
+    }
+
+    static void RegSet(string name, string value)
+    {
+        try
+        {
+            using (var key = Registry.LocalMachine.CreateSubKey(RegParams))
+            {
+                if (key == null) return;
+                if (string.IsNullOrEmpty(value))
+                    key.DeleteValue(name, false);
+                else
+                    key.SetValue(name, value);
+            }
+        }
+        catch { }
+    }
 
     private Process proc;
     private bool stopping;
@@ -22,9 +51,14 @@ class SyncthingService : ServiceBase
 
     static void Main(string[] args)
     {
-        if (args.Length == 0)
+        if (!Environment.UserInteractive)
         {
             ServiceBase.Run(new SyncthingService());
+            return;
+        }
+        if (args.Length == 0)
+        {
+            Usage();
             return;
         }
         switch (args[0].ToLower())
@@ -56,21 +90,26 @@ class SyncthingService : ServiceBase
                 new SyncthingService().RunConsole();
                 break;
             default:
-                Console.WriteLine("Usage:");
-                Console.WriteLine("  SyncthingService.exe install [--home path] - install as a Windows service (optional config dir)");
-                Console.WriteLine("  SyncthingService.exe uninstall        - remove the service");
-                Console.WriteLine("  SyncthingService.exe start [params...] - start the service, extra params are");
-                Console.WriteLine("                                          passed to syncthing.exe for this run");
-                Console.WriteLine("  SyncthingService.exe params [args...]  - save permanent extra args for syncthing.exe");
-                Console.WriteLine("                                          (no args = clear); stored in syncthing-args.txt");
-                Console.WriteLine("  SyncthingService.exe home [path]        - show/set Syncthing config dir (--home)");
-                Console.WriteLine("                                          stored in syncthing-home.txt; set automatically");
-                Console.WriteLine("                                          during install (service runs as LocalSystem)");
-                Console.WriteLine("  SyncthingService.exe stop              - stop the service");
-                Console.WriteLine("  SyncthingService.exe status            - show service state");
-                Console.WriteLine("  SyncthingService.exe run               - run in console (testing, no service)");
+                Usage();
                 break;
         }
+    }
+
+    static void Usage()
+    {
+        Console.WriteLine("Usage:");
+        Console.WriteLine("  SyncthingService.exe install [--home path] - install as a Windows service (optional config dir)");
+        Console.WriteLine("  SyncthingService.exe uninstall        - remove the service");
+        Console.WriteLine("  SyncthingService.exe start [params...] - start the service, extra params are");
+        Console.WriteLine("                                          passed to syncthing.exe for this run");
+        Console.WriteLine("  SyncthingService.exe params [args...]  - save permanent extra args for syncthing.exe");
+        Console.WriteLine("                                          (no args = clear); stored in service registry");
+        Console.WriteLine("  SyncthingService.exe home [path]        - show/set Syncthing config dir (--home)");
+        Console.WriteLine("                                          stored in service registry; set automatically");
+        Console.WriteLine("                                          during install (service runs as LocalSystem)");
+        Console.WriteLine("  SyncthingService.exe stop              - stop the service");
+        Console.WriteLine("  SyncthingService.exe status            - show service state");
+        Console.WriteLine("  SyncthingService.exe run               - run in console (testing, no service)");
     }
 
     static void Install(string[] args)
@@ -97,17 +136,17 @@ class SyncthingService : ServiceBase
         Sc("failure " + SvcName + " reset= 86400 actions= restart/5000/restart/10000/restart/30000");
         if (homeArg != null)
         {
-            File.WriteAllText(HomeFile, homeArg);
-            Console.WriteLine("Config dir saved to " + HomeFile + ": " + homeArg);
+            RegSet("Home", homeArg);
+            Console.WriteLine("Config dir saved: " + homeArg);
         }
-        else if (!File.Exists(HomeFile))
+        else if (RegGet("Home").Length == 0)
         {
             string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             string candidate = Path.Combine(localAppData, "Syncthing");
             if (File.Exists(Path.Combine(candidate, "config.xml")))
             {
-                File.WriteAllText(HomeFile, candidate);
-                Console.WriteLine("Config dir saved to " + HomeFile + ": " + candidate);
+                RegSet("Home", candidate);
+                Console.WriteLine("Config dir saved: " + candidate);
             }
             else
             {
@@ -132,16 +171,10 @@ class SyncthingService : ServiceBase
         string line = "";
         for (int i = 1; i < args.Length; i++)
             line += (line.Length > 0 ? " " : "") + (args[i].Contains(" ") ? "\"" + args[i] + "\"" : args[i]);
-        if (line.Length == 0)
-        {
-            if (File.Exists(ArgsFile)) File.Delete(ArgsFile);
-            Console.WriteLine("Permanent args cleared.");
-        }
-        else
-        {
-            File.WriteAllText(ArgsFile, line);
-            Console.WriteLine("Permanent args saved to " + ArgsFile + ": " + line);
-        }
+        RegSet("Args", line);
+        Console.WriteLine(line.Length == 0
+            ? "Permanent args cleared."
+            : "Permanent args saved: " + line);
     }
 
     static void SetHome(string[] args)
@@ -151,18 +184,19 @@ class SyncthingService : ServiceBase
             string path = args[1];
             if (path.Equals("clear", StringComparison.OrdinalIgnoreCase))
             {
-                if (File.Exists(HomeFile)) File.Delete(HomeFile);
+                RegSet("Home", "");
                 Console.WriteLine("Config dir cleared (syncthing will use its default).");
             }
             else
             {
-                File.WriteAllText(HomeFile, path);
-                Console.WriteLine("Config dir saved to " + HomeFile + ": " + path);
+                RegSet("Home", path);
+                Console.WriteLine("Config dir saved: " + path);
             }
             return;
         }
-        if (File.Exists(HomeFile))
-            Console.WriteLine("Config dir: " + File.ReadAllText(HomeFile).Trim());
+        string current = ReadHomeDir();
+        if (current.Length > 0)
+            Console.WriteLine("Config dir: " + current);
         else
             Console.WriteLine("Config dir not set. Set it with: home <path>");
     }
@@ -212,7 +246,7 @@ class SyncthingService : ServiceBase
         string scmHome = ExtractHomeArg(scArgs);
         if (scmHome != null)
         {
-            try { File.WriteAllText(HomeFile, scmHome.Trim()); } catch { }
+            RegSet("Home", scmHome.Trim());
         }
         if (!extraArgs.Contains("--no-restart"))
             extraArgs = extraArgs.Length > 0 ? "--no-restart " + extraArgs : "--no-restart";
@@ -240,24 +274,12 @@ class SyncthingService : ServiceBase
 
     private static string ReadSavedArgs()
     {
-        try
-        {
-            if (File.Exists(ArgsFile))
-                return File.ReadAllText(ArgsFile).Trim();
-        }
-        catch { }
-        return "";
+        return RegGet("Args").Trim();
     }
 
     private static string ReadHomeDir()
     {
-        try
-        {
-            if (File.Exists(HomeFile))
-                return File.ReadAllText(HomeFile).Trim();
-        }
-        catch { }
-        return "";
+        return RegGet("Home").Trim();
     }
 
     private static string ExtractHomeArg(string line)
