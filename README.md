@@ -1,4 +1,4 @@
-# Syncthing Service Wrapper
+﻿# Syncthing Service Wrapper
 
 A small Windows service wrapper that runs [Syncthing](https://syncthing.net/) as a native Windows service.
 It lets you start, stop, and auto-start Syncthing like any other Windows service, with proper logging
@@ -64,7 +64,7 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:exe ^
 ## Usage
 
 ```
-SyncthingService.exe install           Install the service (admin required)
+SyncthingService.exe install [--home path] Install the service (admin required; optional config dir)
 SyncthingService.exe uninstall         Stop and remove the service
 SyncthingService.exe start [params...] Start the service; extra params are passed to syncthing.exe
 SyncthingService.exe stop              Stop the service

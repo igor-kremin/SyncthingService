@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
@@ -30,7 +30,7 @@ class SyncthingService : ServiceBase
         switch (args[0].ToLower())
         {
             case "install":
-                Install();
+                Install(args);
                 break;
             case "uninstall":
                 Sc("stop " + SvcName);
@@ -56,7 +56,7 @@ class SyncthingService : ServiceBase
                 break;
             default:
                 Console.WriteLine("Usage:");
-                Console.WriteLine("  SyncthingService.exe install          - install as a Windows service");
+                Console.WriteLine("  SyncthingService.exe install [--home path] - install as a Windows service (optional config dir)");
                 Console.WriteLine("  SyncthingService.exe uninstall        - remove the service");
                 Console.WriteLine("  SyncthingService.exe start [params...] - start the service, extra params are");
                 Console.WriteLine("                                          passed to syncthing.exe for this run");
@@ -72,14 +72,27 @@ class SyncthingService : ServiceBase
         }
     }
 
-    static void Install()
+    static void Install(string[] args)
     {
         string exe = Process.GetCurrentProcess().MainModule.FileName;
+        string homeArg = null;
+        for (int i = 1; i < args.Length; i++)
+        {
+            if (args[i].StartsWith("--home="))
+                homeArg = args[i].Substring("--home=".Length);
+            else if (args[i] == "--home" && i + 1 < args.Length)
+                homeArg = args[++i];
+        }
         string bin = "\"" + "\"" + exe + "\"" + "\"";
         Sc("create " + SvcName + " binPath= " + bin + " start= auto DisplayName= \"Syncthing (service wrapper)\"");
         Sc("description " + SvcName + " \"Syncthing run as a Windows service\"");
         Sc("failure " + SvcName + " reset= 86400 actions= restart/5000/restart/10000/restart/30000");
-        if (!File.Exists(HomeFile))
+        if (homeArg != null)
+        {
+            File.WriteAllText(HomeFile, homeArg);
+            Console.WriteLine("Config dir saved to " + HomeFile + ": " + homeArg);
+        }
+        else if (!File.Exists(HomeFile))
         {
             string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             string candidate = Path.Combine(localAppData, "Syncthing");
