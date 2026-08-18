@@ -1,0 +1,21 @@
+# Logs
+*.log
+syncthing-args.txt
+
+# Syncthing binary (self-updating; download fresh from syncthing.net)
+syncthing.exe
+syncthing.exe.new
+syncthing.exe.old
+
+# Compiled wrapper binary (build from source)
+SyncthingService.exe
+SyncthingService.exe.new
+
+# Visual Studio / editors
+.vs/
+*.user
+*.suo
+
+# OS
+Thumbs.db
+Desktop.ini
